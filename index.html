@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>metaphysical</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    /* 全局使用 Futura 字体 */
+    * { font-family: "Futura", "Trebuchet MS", Arial, sans-serif; }
+    
+    html, body { 
+      margin: 0; padding: 0; height: 100%; overflow: hidden; 
+      background-color: #000; 
+    }
+
+    #bgVideo {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      z-index: 0;
+      object-fit: cover;
+    }
+
+    #stage { position: fixed; inset: 0; z-index: 10; pointer-events: none; }
+    .sprite { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) scale(0.2); pointer-events: auto; }
+    
+    .hint {
+      position: fixed; z-index: 20; left: 16px; top: 12px; color: #fff;
+      background: rgba(0,0,0,0.5); padding: 8px 12px; border-radius: 4px;
+      text-transform: uppercase; font-size: 12px; letter-spacing: 1px;
+    }
+  </style>
+</head>
+<body>
+  
+  <video id="bgVideo" autoplay muted loop playsinline preload="auto">
+    <source src="./videos/bg-video.mp4" type="video/mp4">
+    您的浏览器不支持 HTML5 视频。
+  </video>
+
+  <div id="stage"></div>
+  <div class="hint" id="statusHint">Click to enable sound</div>
+
+  <script>
+    const v = document.getElementById('bgVideo');
+
+    /* ========= Adjustable Parameters ========= */
+    const CONFIG = {
+      GIF_SOURCES: [
+        "gifs/3D Blinking Sticker by tracheotommy.gif", 
+        "gifs/3D Whatever Sticker.gif",
+        "gifs/Blinking Blue Eyes Sticker.gif", 
+        "gifs/Confused 3D Sticker by tracheotommy (1).gif", 
+        "gifs/Confused 3D Sticker by tracheotommy.gif", 
+        "gifs/Evil Eye Crying Sticker by Ramisha Sattar.gif", 
+        "gifs/Eyes Eye Roll Sticker by withloveak.gif", 
+        "gifs/eyes pixel STICKER.gif", 
+        "gifs/Happy Blue Eyes Sticker.gif", 
+        "gifs/Nervous Blue Eyes Sticker by Luna.gif"
+      ],
+      SPAWN_EVERY_MS: 1000,
+      SPEED_PX_PER_SEC: [220, 320],
+      SPEED_MULTIPLIER: 3,
+      SCALE_BASE: 0.18,
+      SCALE_GROWTH: 0.002,
+      SIZE_RANGE: [100, 200],
+      EDGE_PADDING: 2,
+      STOP_DISTANCE_FRACTION: [0.25, 0.85]
+    };
+
+    const randIn = (min, max) => Math.random() * (max - min) + min;
+    const randIntIn = (min, max) => Math.floor(randIn(min, max));
+    const choose = (arr) => arr[Math.floor(Math.random() * arr.length)];
+    const stage = document.getElementById('stage');
+    const sprites = new Set();
+
+    function createSprite() {
+      if (!CONFIG.GIF_SOURCES.length) return;
+      const src = encodeURI(choose(CONFIG.GIF_SOURCES));
+      const img = document.createElement('img');
+      img.className = 'sprite';
+      img.src = src;
+      const size = randIntIn(CONFIG.SIZE_RANGE[0], CONFIG.SIZE_RANGE[1]);
+      img.onload = () => {
+        const iw = img.naturalWidth || size;
+        const ih = img.naturalHeight || size;
+        if (iw >= ih) {
+          img.style.width = `${size}px`;
+          img.style.height = `${Math.max(1, Math.round(size * (ih / iw)))}px`;
+        } else {
+          img.style.height = `${size}px`;
+          img.style.width = `${Math.max(1, Math.round(size * (iw / ih)))}px`;
+        }
+      };
+      img.addEventListener('click', (e) => {
+        e.stopPropagation();
+        sprites.delete(state);
+        img.remove();
+      });
+      stage.appendChild(img);
+      const cx = window.innerWidth / 2;
+      const cy = window.innerHeight / 2;
+      const angle = randIn(0, Math.PI * 2);
+      const dirX = Math.cos(angle);
+      const dirY = Math.sin(angle);
+      const speed = randIn(CONFIG.SPEED_PX_PER_SEC[0], CONFIG.SPEED_PX_PER_SEC[1]) * CONFIG.SPEED_MULTIPLIER;
+      const maxRadius = Math.hypot(window.innerWidth / 2, window.innerHeight / 2);
+      const stopFrac = randIn(CONFIG.STOP_DISTANCE_FRACTION[0], CONFIG.STOP_DISTANCE_FRACTION[1]);
+      const targetDist = stopFrac * maxRadius;
+      let x = cx, y = cy;
+      let dist = 0;
+      let stopped = false;
+      let lastT = performance.now();
+      const state = {
+        el: img, x, y, cx, cy, dirX, dirY, speed, dist, targetDist, stopped,
+        update(now) {
+          if (this.stopped) return;
+          const dtMs = Math.min(40, now - lastT);
+          lastT = now;
+          const dt = dtMs / 1000;
+          this.x += this.dirX * this.speed * dt;
+          this.y += this.dirY * this.speed * dt;
+          this.dist = Math.hypot(this.x - this.cx, this.y - this.cy);
+          const scale = CONFIG.SCALE_BASE + this.dist * CONFIG.SCALE_GROWTH;
+          this.el.style.transform = `translate(${this.x - this.cx}px, ${this.y - this.cy}px) translate(-50%, -50%) scale(${scale})`;
+          if (this.dist >= this.targetDist) { this.stopped = true; return; }
+        }
+      };
+      sprites.add(state);
+    }
+
+    function tick(now) { sprites.forEach(s => s.update(now)); requestAnimationFrame(tick); }
+    requestAnimationFrame(tick);
+    setInterval(createSprite, CONFIG.SPAWN_EVERY_MS);
+
+    document.addEventListener('click', () => {
+      v.muted = false;
+      v.play().then(() => {
+        document.getElementById('statusHint').style.display = 'none';
+      });
+    }, { once: true });
+
+    window.addEventListener('resize', () => {
+      const cx = window.innerWidth / 2;
+      const cy = window.innerHeight / 2;
+      sprites.forEach(s => { s.cx = cx; s.cy = cy; });
+    });
+  </script>
+</body>
+</html>
